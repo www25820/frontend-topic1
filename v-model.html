@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue 3 双向绑定示例</title>
+    <!-- 修复：原代码引用本地 ./lib/vue.next.js 不存在，改为 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    <div id="app">
+        <p>{{msg}}</p>
+        <input type="text" v-model="msg" placeholder="请输入内容">
+    </div>
+    <script>
+        const app = Vue.createApp({
+            data(){
+                return {
+                    // 修复：给 msg 设置默认值，页面不再空白无提示
+                    msg: '你好，Vue！'
+                }
+            }
+        })
+        app.mount('#app')
+    </script>
+</body>
+</html>
