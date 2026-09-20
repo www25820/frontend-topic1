@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJAX 实现流程 · 交互动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #0d1326 0%, #162040 50%, #0d1326 100%);
+    min-height: 100vh;
+    color: #fff;
+    padding: 18px 24px;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  .title {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: #7c8db5;
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* 主流程五步骤 */
+  .flow-container {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    margin-bottom: 14px;
+    gap: 0;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .step-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 2px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+
+  .step-icon svg {
+    width: 26px;
+    height: 26px;
+    fill: #5a6a8a;
+    transition: all 0.5s ease;
+  }
+
+  .step-number {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #2a3550;
+    color: #7c8db5;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.5s ease;
+  }
+
+  .step-label {
+    font-size: 12px;
+    color: #5a6a8a;
+    font-weight: 500;
+    text-align: center;
+    transition: all 0.5s ease;
+    line-height: 1.3;
+    max-width: 100px;
+  }
+
+  .step.active .step-icon {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    border-color: #60a5fa;
+    box-shadow: 0 0 24px rgba(37, 99, 235, 0.5);
+    transform: scale(1.1);
+  }
+
+  .step.active .step-icon svg { fill: #fff; }
+  .step.active .step-number { background: #2563eb; color: #fff; }
+  .step.active .step-label { color: #fff; font-weight: 600; }
+
+  .step.done .step-icon {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.35);
+  }
+  .step.done .step-icon svg { fill: #4ade80; }
+  .step.done .step-number { background: #166534; color: #4ade80; }
+  .step.done .step-label { color: #86efac; }
+
+  .connector {
+    width: 50px;
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    position: relative;
+    flex-shrink: 0;
+    margin-top: 27px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .connector::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, #60a5fa, transparent);
+  }
+
+  .connector.flowing::after { animation: flowLine 0.7s ease-in-out forwards; }
+  .connector.done { background: rgba(34, 197, 94, 0.3); }
+
+  @keyframes flowLine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  /* 主展示区 */
+  .main-stage {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+    height: 340px;
+  }
+
+  /* 左侧：可视化场景 */
+  .visual-panel {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-title {
+    font-size: 12px;
+    color: #7c8db5;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: linear-gradient(180deg, #60a5fa, #a78bfa);
+    border-radius: 2px;
+  }
+
+  .visual-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* 浏览器窗口模拟 */
+  .browser-mock {
+    width: 90%;
+    background: #1a2340;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    transition: all 0.5s ease;
+  }
+
+  .browser-bar {
+    background: rgba(255,255,255,0.05);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .browser-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .browser-dot.r { background: #ff5f57; }
+  .browser-dot.y { background: #febc2e; }
+  .browser-dot.g { background: #28c840; }
+
+  .browser-url {
+    flex: 1;
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: #7c8db5;
+    margin-left: 8px;
+    font-family: monospace;
+  }
+
+  .browser-body {
+    padding: 16px;
+    min-height: 140px;
+  }
+
+  .mock-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 12px;
+  }
+
+  .mock-btn {
+    display: inline-block;
+    padding: 8px 18px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-bottom: 12px;
+  }
+
+  .mock-btn.clicked {
+    transform: scale(0.95);
+    box-shadow: 0 0 20px rgba(37,99,235,0.6);
+  }
+
+  .mock-result {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    color: #94a3b8;
+    min-height: 50px;
+    transition: all 0.5s ease;
+  }
+
+  .mock-result.loading {
+    color: #fbbf24;
+    font-style: italic;
+  }
+
+  .mock-result.error {
+    color: #f87171;
+    border-color: rgba(248,113,113,0.3);
+  }
+
+  .mock-result.success {
+    color: #4ade80;
+    border-color: rgba(74,222,128,0.3);
+  }
+
+  .user-row {
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 11px;
+    color: #cbd5e1;
+    opacity: 0;
+    transform: translateX(-10px);
+    animation: rowIn 0.4s ease forwards;
+  }
+
+  @keyframes rowIn {
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* 服务器与请求动画 */
+  .server-scene {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    width: 100%;
+    padding: 0 20px;
+  }
+
+  .entity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .entity-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.5s ease;
+  }
+
+  .entity-icon svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .entity-browser {
+    background: rgba(37,99,235,0.15);
+    border: 2px solid rgba(37,99,235,0.4);
+  }
+  .entity-browser svg { fill: #60a5fa; }
+
+  .entity-server {
+    background: rgba(167,139,250,0.15);
+    border: 2px solid rgba(167,139,250,0.4);
+  }
+  .entity-server svg { fill: #a78bfa; }
+
+  .entity-label {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+
+  .request-line {
+    flex: 1;
+    height: 2px;
+    background: rgba(255,255,255,0.1);
+    position: relative;
+    margin: 0 10px;
+  }
+
+  .data-packet {
+    position: absolute;
+    top: -8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    opacity: 0;
+  }
+
+  .packet-req {
+    background: rgba(37,99,235,0.8);
+    color: #fff;
+    animation: packetGo 1.2s ease-in-out forwards;
+  }
+
+  .packet-res {
+    background: rgba(167,139,250,0.8);
+    color: #fff;
+    animation: packetBack 1.2s ease-in-out 0.6s forwards;
+  }
+
+  @keyframes packetGo {
+    0% { left: 0; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { left: calc(100% - 18px); opacity: 0; }
+  }
+
+  @keyframes packetBack {
+    0% { left: calc(100% - 18px); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { left: 0; opacity: 0; }
+  }
+
+  .server-status {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #7c8db5;
+    background: rgba(0,0,0,0.2);
+    padding: 4px 12px;
+    border-radius: 10px;
+  }
+
+  /* JSON 解析可视化 */
+  .json-scene {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    width: 100%;
+  }
+
+  .json-box {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 10px;
+    line-height: 1.6;
+    transition: all 0.5s ease;
+    max-width: 180px;
+  }
+
+  .json-raw {
+    color: #fbbf24;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .json-parsed {
+    color: #4ade80;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.6s ease;
+  }
+
+  .json-parsed.show {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .json-arrow {
+    font-size: 24px;
+    color: #60a5fa;
+    animation: arrowPulse 1s ease-in-out infinite;
+  }
+
+  @keyframes arrowPulse {
+    0%, 100% { transform: translateX(0); opacity: 0.5; }
+    50% { transform: translateX(6px); opacity: 1; }
+  }
+
+  .json-key { color: #93c5fd; }
+  .json-string { color: #86efac; }
+  .json-number { color: #fcd34d; }
+
+  /* DOM 渲染可视化 */
+  .dom-scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .dom-step-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 90%;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.4s ease;
+  }
+
+  .dom-step-row.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .dom-step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(37,99,235,0.2);
+    border: 1px solid rgba(37,99,235,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #60a5fa;
+    flex-shrink: 0;
+  }
+
+  .dom-step-text {
+    font-size: 11px;
+    color: #cbd5e1;
+    flex: 1;
+  }
+
+  .dom-step-code {
+    font-family: monospace;
+    font-size: 10px;
+    color: #fbbf24;
+    background: rgba(0,0,0,0.2);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  /* 初始化代码展示 */
+  .init-scene {
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .init-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.3;
+    transition: all 0.4s ease;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .init-line.highlight {
+    opacity: 1;
+    background: rgba(37,99,235,0.15);
+    border-left: 3px solid #60a5fa;
+    transform: translateX(4px);
+  }
+
+  .init-line .line-num {
+    color: #4a5568;
+    font-size: 10px;
+    min-width: 16px;
+  }
+
+  .init-line .line-code { color: #cbd5e1; }
+  .init-line .kw { color: #c084fc; }
+  .init-line .fn { color: #60a5fa; }
+  .init-line .str { color: #86efac; }
+  .init-line .cm { color: #4a5568; }
+
+  /* 右侧：代码面板 */
+  .code-panel {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .code-content {
+    flex: 1;
+    background: rgba(0,0,0,0.25);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    overflow-y: auto;
+    color: #cbd5e1;
+  }
+
+  .code-content::-webkit-scrollbar { width: 4px; }
+  .code-content::-webkit-scrollbar-track { background: transparent; }
+  .code-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .code-line {
+    display: flex;
+    gap: 10px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: all 0.3s ease;
+  }
+
+  .code-line.active {
+    background: rgba(37,99,235,0.2);
+    box-shadow: inset 3px 0 0 #60a5fa;
+  }
+
+  .code-line .ln {
+    color: #4a5568;
+    min-width: 20px;
+    text-align: right;
+    user-select: none;
+  }
+
+  .code-line .lc { white-space: pre; }
+
+  .kw { color: #c084fc; }
+  .fn { color: #60a5fa; }
+  .str { color: #86efac; }
+  .num { color: #fcd34d; }
+  .cm { color: #4a5568; font-style: italic; }
+  .op { color: #f472b6; }
+  .prop { color: #fbbf24; }
+
+  /* 步骤说明 */
+  .step-desc {
+    text-align: center;
+    margin-bottom: 12px;
+    min-height: 42px;
+  }
+
+  .desc-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.4s ease;
+  }
+
+  .desc-title.show { opacity: 1; transform: translateY(0); }
+
+  .desc-text {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 3px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.4s ease 0.1s;
+  }
+
+  .desc-text.show { opacity: 1; transform: translateY(0); }
+
+  /* 控制区 */
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(37,99,235,0.45);
+  }
+
+  .btn-secondary {
+    background: rgba(255,255,255,0.06);
+    color: #94a3b8;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  .btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+  /* 进度点 */
+  .progress-dots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    transition: all 0.4s ease;
+    cursor: pointer;
+  }
+
+  .dot.active {
+    background: #60a5fa;
+    box-shadow: 0 0 10px rgba(96,165,250,0.6);
+    transform: scale(1.3);
+  }
+
+  .dot.done { background: #4ade80; }
+
+  /* 图标动画 */
+  .step.active .icon-spin { animation: spin 2s linear infinite; }
+  .step.active .icon-pulse { animation: pulse 1s ease-in-out infinite; }
+  .step.active .icon-bounce { animation: bounce 0.8s ease-in-out infinite; }
+
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+  .entity-icon.pulse { animation: pulse 1s ease-in-out infinite; }
+  .entity-browser.pulse { box-shadow: 0 0 20px rgba(37,99,235,0.4); }
+  .entity-server.pulse { box-shadow: 0 0 20px rgba(167,139,250,0.4); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1 class="title">AJAX 原生 JS 实现流程</h1>
+  <p class="subtitle">交互式动画演示 · 点击步骤或播放按钮查看详细过程</p>
+</div>
+
+<!-- 五步骤主流程 -->
+<div class="flow-container" id="flowContainer">
+  <div class="step" data-step="0">
+    <div class="step-icon">
+      <svg viewBox="0 0 24 24" class="icon-spin"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      <span class="step-number">1</span>
+    </div>
+    <div class="step-label">页面加载初始化</div>
+  </div>
+  <div class="connector" data-connector="0"></div>
+
+  <div class="step" data-step="1">
+    <div class="step-icon">
+      <svg viewBox="0 0 24 24" class="icon-pulse"><path d="M13.527.099C11.61.413 9.859 1.475 8.656 2.974 7.337 4.628 6.636 6.673 6.579 8.803c-.019.697-.019 1.39 0 2.087.024.87.134 1.74.34 2.59.194.79.483 1.55.866 2.27.36.68.803 1.31 1.32 1.88.504.56 1.082 1.05 1.717 1.46.625.4 1.302.72 2.015.95.69.22 1.408.36 2.135.41.72.05 1.446.02 2.165-.08.69-.1 1.37-.27 2.03-.5l.245.01c.34 0 .68-.02 1.01-.07.32-.04.63-.12.93-.23.29-.1.56-.24.81-.41.24-.16.46-.36.65-.58.18-.21.34-.45.47-.71.12-.26.22-.54.28-.83.06-.29.09-.59.08-.89l-.01-.21c-.02-.42-.09-.83-.21-1.23-.11-.39-.28-.77-.49-1.12-.2-.34-.45-.66-.74-.94-.28-.27-.6-.51-.95-.7-.34-.19-.71-.34-1.1-.44-.38-.09-.78-.14-1.18-.14h-.24c-.3 0-.6.02-.89.07-.29.04-.57.11-.84.2-.27.09-.52.21-.76.35-.23.14-.45.3-.65.48-.19.17-.37.37-.52.59-.15.21-.28.44-.38.69-.1.24-.17.5-.22.76-.05.26-.07.53-.06.8l.01.19c.02.38.08.76.19 1.12.1.36.25.7.44 1.02.18.31.4.6.66.85.25.25.54.46.85.63.31.16.65.28 1.01.36.36.08.73.12 1.1.12h.2c.28 0 .56-.03.83-.08.27-.05.53-.13.78-.24.25-.1.48-.23.7-.38.21-.15.4-.32.57-.51.16-.19.3-.4.42-.62.11-.22.2-.45.27-.69.06-.24.1-.49.1-.74v-.2c0-.37-.05-.74-.15-1.09-.1-.35-.25-.68-.44-.99-.19-.3-.42-.58-.69-.82-.26-.24-.56-.44-.89-.6-.33-.15-.68-.26-1.05-.32-.37-.06-.75-.07-1.13-.03-.38.04-.75.12-1.1.24-.35.12-.68.28-.98.48-.3.19-.57.42-.8.68-.23.26-.42.55-.56.87-.14.31-.23.65-.27 1-.04.35-.03.7.03 1.05.06.34.17.68.32 1 .15.31.34.6.57.86.23.25.5.47.8.64.3.17.63.3.98.38.35.08.71.12 1.07.11.36-.01.72-.06 1.07-.14.34-.08.67-.2.98-.35.3-.15.58-.34.83-.56.25-.22.47-.47.65-.75.18-.28.32-.58.42-.9.1-.32.16-.65.18-.99.02-.34-.01-.68-.08-1.01-.07-.33-.18-.65-.33-.95-.15-.3-.34-.57-.56-.82-.22-.24-.47-.45-.75-.62-.28-.16-.58-.29-.9-.37-.32-.08-.65-.12-.98-.11-.33.01-.66.05-.98.13-.32.08-.62.2-.9.35-.28.15-.54.34-.77.56-.23.22-.43.47-.59.75-.16.28-.28.58-.36.89-.08.31-.12.63-.11.95.01.32.06.64.15.95.09.31.22.6.39.87.17.27.37.51.61.72.24.21.51.38.8.51.29.13.6.22.92.27.32.05.65.05.97.01.32-.04.63-.12.93-.24.3-.12.58-.27.84-.46.26-.18.5-.31.71-.51.21-.2.39-.43.53-.68.14-.25.25-.52.32-.8.07-.28.1-.57.08-.86-.02-.29-.08-.58-.18-.85-.1-.27-.24-.53-.41-.76-.17-.23-.37-.44-.6-.61-.23-.17-.48-.31-.75-.41-.27-.1-.55-.16-.84-.18-.29-.02-.58.01-.87.07-.29.06-.57.15-.84.27-.27.12-.52.27-.76.45-.24.18-.46.39-.65.63-.19.24-.35.5-.48.78-.13.28-.22.57-.27.87-.05.3-.05.61.01.91.06.3.17.59.32.86.15.27.34.52.56.74.22.22.47.4.75.54.28.14.58.24.89.3.31.06.63.08.95.06.32-.02.63-.08.93-.17.3-.09.59-.21.86-.36.27-.15.52-.33.74-.54.22-.21.41-.45.56-.71.15-.26.26-.54.33-.83.07-.29.1-.59.08-.89-.02-.29-.08-.59-.18-.87-.1-.28-.24-.54-.41-.78-.17-.24-.37-.45-.6-.62-.23-.17-.48-.31-.75-.41-.27-.1-.55-.16-.84-.18z"/></svg>
+      <span class="step-number">2</span>
+    </div>
+    <div class="step-label">用户点击触发</div>
+  </div>
+  <div class="connector" data-connector="1"></div>
+
+  <div class="step" data-step="2">
+    <div class="step-icon">
+      <svg viewBox="0 0 24 24" class="icon-bounce"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/></svg>
+      <span class="step-number">3</span>
+    </div>
+    <div class="step-label">fetch 异步请求</div>
+  </div>
+  <div class="connector" data-connector="2"></div>
+
+  <div class="step" data-step="3">
+    <div class="step-icon">
+      <svg viewBox="0 0 24 24" class="icon-spin"><path d="M18.59 9H15V3.5L9.41 9H6v2h2.59L6 13.59V16h3.59L5 20.59 6.41 22 11 17.41V22h2v-4.59L17.59 22 19 20.59 14.41 16H18v-2h-2.59L18 11.41V9h.59zM13 7.41V4h-2v3.41L10.41 8h3.18L13 7.41zM8 14v-2h1.59L11 13.41 9.41 15H8zm4 3.59L10.41 14h3.18L12 17.59zM14.41 13 16 11.41 14.41 10H13v1.59L14.41 13zM16 16h-1.59L13 14.59V13h1.41L16 14.59V16z"/></svg>
+      <span class="step-number">4</span>
+    </div>
+    <div class="step-label">JSON 解析</div>
+  </div>
+  <div class="connector" data-connector="3"></div>
+
+  <div class="step" data-step="4">
+    <div class="step-icon">
+      <svg viewBox="0 0 24 24" class="icon-pulse"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12zm-5-6l-7 4V7z"/></svg>
+      <span class="step-number">5</span>
+    </div>
+    <div class="step-label">DOM 无刷新渲染</div>
+  </div>
+</div>
+
+<!-- 步骤说明 -->
+<div class="step-desc">
+  <div class="desc-title" id="descTitle"></div>
+  <div class="desc-text" id="descText"></div>
+</div>
+
+<!-- 主展示区：左可视化 + 右代码 -->
+<div class="main-stage">
+  <!-- 左侧可视化 -->
+  <div class="visual-panel">
+    <div class="panel-title">过程可视化</div>
+    <div class="visual-content" id="visualContent">
+      <!-- 动态内容由 JS 注入 -->
+    </div>
+  </div>
+
+  <!-- 右侧代码 -->
+  <div class="code-panel">
+    <div class="panel-title">对应代码</div>
+    <div class="code-content" id="codeContent"></div>
+  </div>
+</div>
+
+<!-- 控制区 -->
+<div class="controls">
+  <button class="btn btn-secondary" id="prevBtn" disabled>
+    <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+    上一步
+  </button>
+  <button class="btn btn-primary" id="playBtn">
+    <svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+    <span id="playText">播放</span>
+  </button>
+  <button class="btn btn-secondary" id="nextBtn">
+    下一步
+    <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+  </button>
+  <button class="btn btn-secondary" id="resetBtn">
+    <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+    重置
+  </button>
+</div>
+
+<div class="progress-dots" id="progressDots">
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+</div>
+
+<script>
+const steps = document.querySelectorAll('.step');
+const connectors = document.querySelectorAll('.connector');
+const dots = document.querySelectorAll('.dot');
+const descTitle = document.getElementById('descTitle');
+const descText = document.getElementById('descText');
+const visualContent = document.getElementById('visualContent');
+const codeContent = document.getElementById('codeContent');
+const playBtn = document.getElementById('playBtn');
+const playIcon = document.getElementById('playIcon');
+const playText = document.getElementById('playText');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+const stepData = [
+  {
+    title: '页面加载初始化',
+    text: '浏览器解析 HTML，执行 script 标签内的 JS 代码：获取 DOM 引用、定义函数、绑定事件',
+  },
+  {
+    title: '用户点击触发',
+    text: '用户点击按钮，触发 click 事件，执行 fetchUsers()，先显示「加载中」提示',
+  },
+  {
+    title: 'fetch 异步请求',
+    text: 'fetch() 向服务器发起异步 HTTP 请求，浏览器不阻塞，等待服务器返回 Response',
+  },
+  {
+    title: 'JSON 解析',
+    text: 'response.json() 将服务器返回的 JSON 文本异步解析为 JavaScript 对象',
+  },
+  {
+    title: 'DOM 无刷新渲染',
+    text: '调用 renderUserList()，循环数据拼接 HTML 字符串，通过 innerHTML 一次性更新页面',
+  }
+];
+
+// 每个步骤的代码片段
+const codeSnippets = [
+  // 步骤1：初始化
+  [
+    { ln: 1, code: '<span class="cm">// 1. 获取 DOM 引用</span>' },
+    { ln: 2, code: '<span class="kw">const</span> loadBtn = <span class="fn">document</span>.<span class="fn">getElementById</span>(<span class="str">\'loadBtn\'</span>);' },
+    { ln: 3, code: '<span class="kw">const</span> userListDiv = <span class="fn">document</span>.<span class="fn">getElementById</span>(<span class="str">\'userList\'</span>);' },
+    { ln: 4, code: '' },
+    { ln: 5, code: '<span class="cm">// 2. 定义渲染回调函数</span>' },
+    { ln: 6, code: '<span class="kw">function</span> <span class="fn">renderUserList</span>(users) {' },
+    { ln: 7, code: '  userListDiv.<span class="prop">innerHTML</span> = <span class="str">\'\'</span>;' },
+    { ln: 8, code: '  <span class="kw">if</span> (users.<span class="prop">length</span> === <span class="num">0</span>) {' },
+    { ln: 9, code: '    userListDiv.<span class="prop">innerHTML</span> = <span class="str">\'暂无数据\'</span>;' },
+    { ln: 10, code: '    <span class="kw">return</span>;' },
+    { ln: 11, code: '  }' },
+    { ln: 12, code: '  <span class="kw">let</span> html = <span class="str">\'\'</span>;' },
+    { ln: 13, code: '  users.<span class="fn">forEach</span>(user => {' },
+    { ln: 14, code: '    html += <span class="str">`&lt;div&gt;${user.name}&lt;/div&gt;`</span>;' },
+    { ln: 15, code: '  });' },
+    { ln: 16, code: '  userListDiv.<span class="prop">innerHTML</span> = html;' },
+    { ln: 17, code: '}' },
+    { ln: 18, code: '' },
+    { ln: 19, code: '<span class="cm">// 3. 定义异步取数函数</span>' },
+    { ln: 20, code: '<span class="kw">function</span> <span class="fn">fetchUsers</span>() {' },
+    { ln: 21, code: '  userListDiv.<span class="prop">innerHTML</span> = <span class="str">\'加载中...\'</span>;' },
+    { ln: 22, code: '  <span class="fn">fetch</span>(<span class="str">\'https://jsonplaceholder.typicode.com/users\'</span>)' },
+    { ln: 23, code: '    .<span class="fn">then</span>(res => res.<span class="fn">json</span>())' },
+    { ln: 24, code: '    .<span class="fn">then</span>(data => <span class="fn">renderUserList</span>(data))' },
+    { ln: 25, code: '    .<span class="fn">catch</span>(err => console.<span class="fn">error</span>(err));' },
+    { ln: 26, code: '}' },
+    { ln: 27, code: '' },
+    { ln: 28, code: '<span class="cm">// 4. 绑定点击事件</span>' },
+    { ln: 29, code: 'loadBtn.<span class="fn">addEventListener</span>(<span class="str">\'click\'</span>, fetchUsers);' },
+  ],
+  // 步骤2：用户点击
+  [
+    { ln: 1, code: '<span class="cm">// 用户点击按钮 → 触发 click 事件</span>' },
+    { ln: 2, code: 'loadBtn.<span class="fn">addEventListener</span>(<span class="str">\'click\'</span>, <span class="fn">fetchUsers</span>);' },
+    { ln: 3, code: '' },
+    { ln: 4, code: '<span class="cm">// ↓ 事件回调被调用</span>' },
+    { ln: 5, code: '<span class="kw">function</span> <span class="fn">fetchUsers</span>() {' },
+    { ln: 6, code: '  <span class="cm">// 先显示加载中提示</span>' },
+    { ln: 7, code: '  userListDiv.<span class="prop">innerHTML</span> =' },
+    { ln: 8, code: '    <span class="str">\'⏳ 加载中，请稍候...\'</span>;' },
+    { ln: 9, code: '' },
+    { ln: 10, code: '  <span class="cm">// 然后发起异步请求</span>' },
+    { ln: 11, code: '  <span class="fn">fetch</span>(url).<span class="fn">then</span>(...).<span class="fn">catch</span>(...);' },
+    { ln: 12, code: '}' },
+  ],
+  // 步骤3：fetch请求
+  [
+    { ln: 1, code: '<span class="fn">fetch</span>(<span class="str">\'https://jsonplaceholder.typicode.com/users\'</span>)' },
+    { ln: 2, code: '  .<span class="fn">then</span>(response => {' },
+    { ln: 3, code: '    <span class="cm">// 检查 HTTP 状态码</span>' },
+    { ln: 4, code: '    <span class="kw">if</span> (!response.<span class="prop">ok</span>) {' },
+    { ln: 5, code: '      <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">\'请求失败\'</span>);' },
+    { ln: 6, code: '    }' },
+    { ln: 7, code: '    <span class="kw">return</span> response;' },
+    { ln: 8, code: '  })' },
+    { ln: 9, code: '  .<span class="fn">then</span>(response => response.<span class="fn">json</span>())' },
+    { ln: 10, code: '  .<span class="fn">then</span>(data => <span class="fn">renderUserList</span>(data))' },
+    { ln: 11, code: '  .<span class="fn">catch</span>(error => {' },
+    { ln: 12, code: '    userListDiv.<span class="prop">innerHTML</span> =' },
+    { ln: 13, code: '      <span class="str">`❌ 加载失败：${error.message}`</span>;' },
+    { ln: 14, code: '  });' },
+  ],
+  // 步骤4：JSON解析
+  [
+    { ln: 1, code: '<span class="fn">fetch</span>(url)' },
+    { ln: 2, code: '  .<span class="fn">then</span>(response => {' },
+    { ln: 3, code: '    <span class="cm">// response 是 Response 对象</span>' },
+    { ln: 4, code: '    <span class="cm">// body 是原始字节流</span>' },
+    { ln: 5, code: '    <span class="kw">return</span> response;<span class="cm">  // 传给下一个 then</span>' },
+    { ln: 6, code: '  })' },
+    { ln: 7, code: '  .<span class="fn">then</span>(response => {' },
+    { ln: 8, code: '    <span class="cm">// ★ 异步解析为 JSON 对象</span>' },
+    { ln: 9, code: '    <span class="cm">// 内部：读取 body 流 → UTF-8 解码</span>' },
+    { ln: 10, code: '    <span class="cm">//       → JSON.parse() 解析</span>' },
+    { ln: 11, code: '    <span class="kw">return</span> response.<span class="fn">json</span>();' },
+    { ln: 12, code: '  })' },
+    { ln: 13, code: '  .<span class="fn">then</span>(jsonData => {' },
+    { ln: 14, code: '    <span class="cm">// jsonData 已是 JS 对象/数组</span>' },
+    { ln: 15, code: '    <span class="cm">// 可直接 jsonData[0].name 访问</span>' },
+    { ln: 16, code: '    <span class="fn">renderUserList</span>(jsonData);' },
+    { ln: 17, code: '  });' },
+  ],
+  // 步骤5：DOM渲染
+  [
+    { ln: 1, code: '<span class="kw">function</span> <span class="fn">renderUserList</span>(users) {' },
+    { ln: 2, code: '  <span class="cm">// ① 清空容器</span>' },
+    { ln: 3, code: '  userListDiv.<span class="prop">innerHTML</span> = <span class="str">\'\'</span>;' },
+    { ln: 4, code: '' },
+    { ln: 5, code: '  <span class="cm">// ② 空数据判断</span>' },
+    { ln: 6, code: '  <span class="kw">if</span> (users.<span class="prop">length</span> === <span class="num">0</span>) {' },
+    { ln: 7, code: '    userListDiv.<span class="prop">innerHTML</span> = <span class="str">\'暂无用户数据\'</span>;' },
+    { ln: 8, code: '    <span class="kw">return</span>;' },
+    { ln: 9, code: '  }' },
+    { ln: 10, code: '' },
+    { ln: 11, code: '  <span class="cm">// ③ 循环拼接 HTML 字符串</span>' },
+    { ln: 12, code: '  <span class="kw">let</span> htmlContent = <span class="str">\'\'</span>;' },
+    { ln: 13, code: '  users.<span class="fn">forEach</span>(user => {' },
+    { ln: 14, code: '    htmlContent += <span class="str">`</span>' },
+    { ln: 15, code: '      <span class="str">&lt;div class="user-item"&gt;</span>' },
+    { ln: 16, code: '        <span class="str">${user.name} (${user.email})</span>' },
+    { ln: 17, code: '      <span class="str">&lt;/div&gt;`</span>;' },
+    { ln: 18, code: '  });' },
+    { ln: 19, code: '' },
+    { ln: 20, code: '  <span class="cm">// ④ 一次性写入 DOM（无闪烁、不刷新）</span>' },
+    { ln: 21, code: '  userListDiv.<span class="prop">innerHTML</span> = htmlContent;' },
+    { ln: 22, code: '}' },
+  ]
+];
+
+// 每个步骤高亮的代码行
+const highlightLines = [
+  [2, 3, 6, 20, 29],  // 初始化：关键行
+  [2, 7, 8],            // 点击触发
+  [1, 4, 5],            // fetch请求
+  [11],                  // json解析
+  [3, 12, 13, 21],      // DOM渲染
+];
+
+let currentStep = -1;
+let isPlaying = false;
+let playTimer = null;
+let subTimers = [];
+
+// 修复：统一管理子动画定时器，切步骤/重置时全部清理，避免残留定时器导致动画错乱
+function schedule(fn, ms) {
+  subTimers.push(setTimeout(fn, ms));
+}
+function clearSubTimers() {
+  subTimers.forEach(clearTimeout);
+  subTimers = [];
+}
+
+function updateUI() {
+  steps.forEach((step, i) => {
+    step.classList.remove('active', 'done');
+    if (i < currentStep) step.classList.add('done');
+    if (i === currentStep) step.classList.add('active');
+  });
+
+  connectors.forEach((conn, i) => {
+    conn.classList.remove('flowing', 'done');
+    if (i < currentStep) conn.classList.add('done');
+  });
+
+  dots.forEach((dot, i) => {
+    dot.classList.remove('active', 'done');
+    if (i < currentStep) dot.classList.add('done');
+    if (i === currentStep) dot.classList.add('active');
+  });
+
+  if (currentStep >= 0 && currentStep < stepData.length) {
+    descTitle.textContent = stepData[currentStep].title;
+    descText.textContent = stepData[currentStep].text;
+    descTitle.classList.remove('show');
+    descText.classList.remove('show');
+    setTimeout(() => {
+      descTitle.classList.add('show');
+      descText.classList.add('show');
+    }, 50);
+    renderCode(currentStep);
+    renderVisual(currentStep);
+  } else {
+    descTitle.classList.remove('show');
+    descText.classList.remove('show');
+    codeContent.innerHTML = '';
+    visualContent.innerHTML = '<div style="color:#4a5568;font-size:13px;">点击播放或步骤开始演示</div>';
+  }
+
+  prevBtn.disabled = currentStep <= 0;
+  nextBtn.disabled = currentStep >= steps.length - 1;
+}
+
+function renderCode(stepIdx) {
+  const lines = codeSnippets[stepIdx];
+  const hl = highlightLines[stepIdx];
+  codeContent.innerHTML = lines.map(l =>
+    `<div class="code-line ${hl.includes(l.ln) ? 'active' : ''}">
+      <span class="ln">${l.ln}</span>
+      <span class="lc">${l.code || '&nbsp;'}</span>
+    </div>`
+  ).join('');
+}
+
+function renderVisual(stepIdx) {
+  clearSubTimers();
+  if (stepIdx === 0) renderInitVisual();
+  else if (stepIdx === 1) renderClickVisual();
+  else if (stepIdx === 2) renderFetchVisual();
+  else if (stepIdx === 3) renderJsonVisual();
+  else if (stepIdx === 4) renderDomVisual();
+}
+
+// 步骤1：初始化 - 代码行逐条高亮
+function renderInitVisual() {
+  const lines = [
+    { code: '<span class="kw">const</span> loadBtn = <span class="fn">getElementById</span>(<span class="str">\'loadBtn\'</span>)', label: '获取按钮' },
+    { code: '<span class="kw">const</span> userListDiv = <span class="fn">getElementById</span>(<span class="str">\'userList\'</span>)', label: '获取展示区' },
+    { code: '<span class="kw">function</span> <span class="fn">renderUserList</span>(users) { ... }', label: '定义渲染函数' },
+    { code: '<span class="kw">function</span> <span class="fn">fetchUsers</span>() { ... }', label: '定义异步函数' },
+    { code: 'loadBtn.<span class="fn">addEventListener</span>(<span class="str">\'click\'</span>, fetchUsers)', label: '绑定点击事件' },
+  ];
+  visualContent.innerHTML = `
+    <div class="init-scene">
+      ${lines.map((l, i) => `
+        <div class="init-line" data-idx="${i}">
+          <span class="line-num">${i + 1}</span>
+          <span class="line-code">${l.code}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  const initLines = visualContent.querySelectorAll('.init-line');
+  let idx = 0;
+  function highlightNext() {
+    if (idx > 0) initLines[idx - 1].classList.remove('highlight');
+    if (idx < initLines.length) {
+      initLines[idx].classList.add('highlight');
+      idx++;
+      schedule(highlightNext, 700);
+    }
+  }
+  highlightNext();
+}
+
+// 步骤2：用户点击 - 浏览器模拟
+function renderClickVisual() {
+  visualContent.innerHTML = `
+    <div class="browser-mock">
+      <div class="browser-bar">
+        <div class="browser-dot r"></div>
+        <div class="browser-dot y"></div>
+        <div class="browser-dot g"></div>
+        <div class="browser-url">https://example.com/users</div>
+      </div>
+      <div class="browser-body">
+        <div class="mock-title">用户管理系统</div>
+        <div class="mock-btn" id="mockBtn">📥 加载用户数据</div>
+        <div class="mock-result" id="mockResult">点击按钮，数据将出现在这里</div>
+      </div>
+    </div>
+  `;
+  schedule(() => {
+    const btn = document.getElementById('mockBtn');
+    const result = document.getElementById('mockResult');
+    if (btn) btn.classList.add('clicked');
+    if (result) {
+      result.classList.add('loading');
+      result.textContent = '⏳ 加载中，请稍候...（浏览器依然流畅）';
+    }
+  }, 500);
+}
+
+// 步骤3：fetch请求 - 浏览器与服务器交互
+function renderFetchVisual() {
+  visualContent.innerHTML = `
+    <div class="server-scene">
+      <div class="entity">
+        <div class="entity-icon entity-browser pulse" id="browserIcon">
+          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4h-7V6h7v2zm0 9h-7v-2h7v2zm-9 0H4v-2h7v2zm0-4H4v-2h7v2zm0-4H4V6h7v3z"/></svg>
+        </div>
+        <div class="entity-label">浏览器</div>
+      </div>
+      <div class="request-line" id="reqLine">
+        <div class="data-packet packet-req" style="top:-8px;">REQ</div>
+        <div class="data-packet packet-res" style="top:-8px;">RES</div>
+      </div>
+      <div class="entity">
+        <div class="entity-icon entity-server pulse" id="serverIcon">
+          <svg viewBox="0 0 24 24"><path d="M4 1h16c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V3c0-1.1.9-2 2-2zm0 14h16c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2zm3-10h2v2H7V5zm10 0v2h-6V5h6zM7 19h2v2H7v-2zm10 0v2h-6v-2h6z"/></svg>
+        </div>
+        <div class="entity-label">服务器</div>
+      </div>
+      <div class="server-status" id="serverStatus">等待请求...</div>
+    </div>
+  `;
+  schedule(() => {
+    const status = document.getElementById('serverStatus');
+    if (status) status.textContent = '→ 发送 HTTP 请求中...';
+  }, 300);
+  schedule(() => {
+    const status = document.getElementById('serverStatus');
+    if (status) status.textContent = '✓ 服务器处理完成，返回 Response';
+  }, 1600);
+}
+
+// 步骤4：JSON解析
+function renderJsonVisual() {
+  visualContent.innerHTML = `
+    <div class="json-scene">
+      <div class="json-box">
+        <div class="json-raw" id="jsonRaw">[{"id":1,"name":"张三","email":"zhang@test.com"},{"id":2,"name":"李四","email":"li@test.com"}]</div>
+      </div>
+      <div class="json-arrow">→</div>
+      <div class="json-box json-parsed" id="jsonParsed">
+        <div><span class="json-key">Array(2)</span></div>
+        <div>&nbsp;&nbsp;<span class="json-key">0:</span> {<span class="json-key">id:</span> <span class="json-number">1</span>, <span class="json-key">name:</span> <span class="json-string">"张三"</span>}</div>
+        <div>&nbsp;&nbsp;<span class="json-key">1:</span> {<span class="json-key">id:</span> <span class="json-number">2</span>, <span class="json-key">name:</span> <span class="json-string">"李四"</span>}</div>
+      </div>
+    </div>
+  `;
+  schedule(() => {
+    const parsed = document.getElementById('jsonParsed');
+    if (parsed) parsed.classList.add('show');
+  }, 600);
+}
+
+// 步骤5：DOM渲染
+function renderDomVisual() {
+  visualContent.innerHTML = `
+    <div class="dom-scene">
+      <div class="dom-step-row" data-idx="0">
+        <div class="dom-step-num">1</div>
+        <div class="dom-step-text">清空容器</div>
+        <div class="dom-step-code">innerHTML = ''</div>
+      </div>
+      <div class="dom-step-row" data-idx="1">
+        <div class="dom-step-num">2</div>
+        <div class="dom-step-text">循环遍历 users 数组</div>
+        <div class="dom-step-code">forEach()</div>
+      </div>
+      <div class="dom-step-row" data-idx="2">
+        <div class="dom-step-num">3</div>
+        <div class="dom-step-text">模板字符串拼接 HTML</div>
+        <div class="dom-step-code">html += \`...\`</div>
+      </div>
+      <div class="dom-step-row" data-idx="3">
+        <div class="dom-step-num">4</div>
+        <div class="dom-step-text">一次性写入 DOM（无刷新）</div>
+        <div class="dom-step-code">innerHTML = html</div>
+      </div>
+    </div>
+  `;
+  const rows = visualContent.querySelectorAll('.dom-step-row');
+  rows.forEach((row, i) => {
+    schedule(() => row.classList.add('show'), 400 + i * 500);
+  });
+}
+
+function goToStep(step) {
+  if (step < -1 || step >= steps.length) return;
+  const prevStep = currentStep;
+  currentStep = step;
+  if (step > prevStep && step >= 0 && step < steps.length) {
+    const conn = connectors[step - 1];
+    if (conn) {
+      conn.classList.add('flowing');
+      setTimeout(() => conn.classList.remove('flowing'), 700);
+    }
+  }
+  updateUI();
+}
+
+function nextStep() {
+  if (currentStep < steps.length - 1) goToStep(currentStep + 1);
+}
+
+function prevStep() {
+  if (currentStep > 0) goToStep(currentStep - 1);
+  else if (currentStep === 0) goToStep(-1);
+}
+
+function startPlay() {
+  isPlaying = true;
+  playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+  playText.textContent = '暂停';
+  if (currentStep >= steps.length - 1) goToStep(-1);
+  playTimer = setInterval(() => {
+    if (currentStep < steps.length - 1) nextStep();
+    else stopPlay();
+  }, 3500);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+  playText.textContent = '播放';
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+}
+
+function reset() {
+  stopPlay();
+  clearSubTimers();
+  goToStep(-1);
+}
+
+playBtn.addEventListener('click', () => { if (isPlaying) stopPlay(); else startPlay(); });
+nextBtn.addEventListener('click', () => { stopPlay(); nextStep(); });
+prevBtn.addEventListener('click', () => { stopPlay(); prevStep(); });
+resetBtn.addEventListener('click', reset);
+
+steps.forEach((step, i) => {
+  step.addEventListener('click', () => { stopPlay(); goToStep(i); });
+});
+
+dots.forEach((dot, i) => {
+  dot.addEventListener('click', () => { stopPlay(); goToStep(i); });
+});
+
+document.addEventListener('keydown', (e) => {
+  // 修复
