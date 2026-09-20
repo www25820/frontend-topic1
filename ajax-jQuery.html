@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>jQuery AJAX 取 JSON 数据案例</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #userList {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            min-height: 50px;
+            background: #f9f9f9;
+        }
+        .user-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .user-item:last-child { border-bottom: none; }
+        .loading { color: #888; font-style: italic; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h2>👤 用户管理系统（jQuery 版 · 无刷新加载）</h2>
+    <button id="loadBtn">📥 异步加载用户数据</button>
+    <!-- 展示区域 -->
+    <div id="userList">
+        <span class="loading">点击按钮，数据将出现在这里（页面不会刷新）</span>
+    </div>
+    <!-- ★ 1. 引入 jQuery 库（CDN） -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script>
+        // ★ 2. jQuery 的入口函数（等待 DOM 就绪，相当于原生 DOMContentLoaded）
+        $(document).ready(function() {
+            // ★ 3. jQuery 选择器：$() 替代原生 getElementById
+            const $loadBtn = $('#loadBtn');
+            const $userList = $('#userList');
+
+            // 修复：HTML 转义函数，防止 XSS 注入
+            function escapeHtml(str) {
+                return $('<div>').text(String(str)).html();
+            }
+
+            // ★ 4. 定义回调函数：渲染用户列表
+            function renderUserList(users) {
+                // ★ jQuery 的 .html() 替代原生 innerHTML
+                //    清空容器
+                $userList.html('');
+                if (users.length === 0) {
+                    $userList.html('<span>暂无用户数据</span>');
+                    return;
+                }
+                // 拼接 HTML 字符串（修复：接口字段全部转义）
+                let htmlContent = '';
+                users.forEach(user => {
+                    htmlContent += `
+                        <div class="user-item">
+                            <strong>👤 ${escapeHtml(user.name)}</strong>
+                            (用户名: ${escapeHtml(user.username)})
+                            <span style="color: #666;">📧 ${escapeHtml(user.email)}</span>
+                        </div>
+                    `;
+                });
+                // ★ 一次性插入
+                $userList.html(htmlContent);
+            }
+
+            // ★ 5. 定义点击事件：jQuery 的 .on() 替代原生 addEventListener
+            $loadBtn.on('click', function() {
+                // 显示加载提示
+                $userList.html('<span class="loading">⏳ 加载中，请稍候...（浏览器依然流畅）</span>');
+
+                // ★★★★★ jQuery 核心 AJAX 方法：$.ajax()
+                // 对比原生 fetch，jQuery 封装得更简洁
+                $.ajax({
+                    url: 'https://jsonplaceholder.typicode.com/users',  // 请求地址
+                    method: 'GET',                                       // 请求方式
+                    dataType: 'json',                                    // ★ 告诉 jQuery 自动解析 JSON
+                    timeout: 8000,                                       // 修复：设置 8 秒超时
+                    success: function(responseData) {                    // ★ 回调函数：请求成功时执行
+                        renderUserList(responseData);
+                    },
+                    error: function(xhr, status, errorThrown) {          // ★ 回调函数：请求失败时执行
+                        const msg = status === 'timeout' ? '请求超时' : `${status} - ${errorThrown}`;
+                        $userList.html(`<span class="error">❌ 加载失败：${msg}</span>`);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
