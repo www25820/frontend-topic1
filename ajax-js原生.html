@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>AJAX 取 JSON 数据案例</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #userList {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            min-height: 50px;
+            background: #f9f9f9;
+        }
+        .user-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .user-item:last-child { border-bottom: none; }
+        .loading { color: #888; font-style: italic; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+
+    <h2>👤 用户管理系统（无刷新加载）</h2>
+    <button id="loadBtn">📥 异步加载用户数据</button>
+
+    <!-- 这就是我们要更新的页面指定区域 -->
+    <div id="userList">
+        <span class="loading">点击按钮，数据将出现在这里（页面不会刷新）</span>
+    </div>
+
+    <script>
+        // 1. 获取按钮和展示区域的 DOM 引用
+        const loadBtn = document.getElementById('loadBtn');
+        const userListDiv = document.getElementById('userList');
+
+        // 修复：新增 HTML 转义函数，防止接口数据注入 XSS
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // 2. 定义回调函数：处理取回来的 JSON 数据
+        function renderUserList(users) {
+            // 清空容器，准备放入新内容
+            userListDiv.innerHTML = '';
+
+            // 如果数据为空，显示提示
+            if (users.length === 0) {
+                userListDiv.innerHTML = '<span>暂无用户数据</span>';
+                return;
+            }
+
+            // ★ 核心 DOM 操作：循环数据，拼接 HTML 字符串，通过 innerHTML 渲染
+            // 修复：所有接口字段均经过 escapeHtml 转义
+            let htmlContent = '';
+            users.forEach(user => {
+                htmlContent += `
+                    <div class="user-item">
+                        <strong>👤 ${escapeHtml(user.name)}</strong>
+                        (用户名: ${escapeHtml(user.username)})
+                        <span style="color: #666;">📧 ${escapeHtml(user.email)}</span>
+                    </div>
+                `;
+            });
+
+            // 将拼好的 HTML 一次性插入页面（这一步页面不会闪烁，不会刷新）
+            userListDiv.innerHTML = htmlContent;
+        }
+
+        // 3. 定义异步取数据函数（点击时触发）
+        function fetchUsers() {
+            // 先给用户一个友好的“加载中”提示（证明浏览器没卡死，异步在进行）
+            userListDiv.innerHTML = '<span class="loading">⏳ 加载中，请稍候...（浏览器依然流畅）</span>';
+
+            // 修复：用 AbortController + setTimeout 设置 8 秒超时
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+            // ★ 利用 JS 的 fetch API（基于 Promise）异步去服务器取 JSON 数据
+            fetch('https://jsonplaceholder.typicode.com/users', { signal: controller.signal })
+                .then(response => {
+                    // 这一步检查网络状态是否正常
+                    if (!response.ok) {
+                        throw new Error('网络请求失败');
+                    }
+                    // ★ 将返回的数据解析为 JSON（异步操作）
+                    return response.json();
+                })
+                .then(jsonData => {
+                    // ★ 执行提前写好的回调函数（即上面的 renderUserList）
+                    renderUserList(jsonData);
+                })
+                .catch(error => {
+                    // 修复：区分超时与其他错误，使用 CSS 类 .error 而非内联样式
+                    const msg = error.name === 'AbortError' ? '请求超时' : error.message;
+                    userListDiv.innerHTML = `<span class="error">❌ 加载失败：${msg}</span>`;
+                })
+                .finally(() => clearTimeout(timeoutId));
+        }
+
+        // 4. 绑定点击事件
+        loadBtn.addEventListener('click', fetchUsers);
+    </script>
+</body>
+</html>
